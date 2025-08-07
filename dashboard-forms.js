@@ -1,8 +1,8 @@
-// Dashboard Forms - ปรับปรุงเพื่อรองรับ JSONP และการบันทึกรายงานการอบรม
-// เพิ่มส่วนนี้ใน Dashboard object
+// Dashboard Functions - Complete Implementation
+// เพิ่มฟังก์ชันที่เหลือใน Dashboard object
 
 Object.assign(Dashboard, {
-    // Open training modal (ปรับปรุงแล้ว)
+    // Open training modal
     openTrainingModal: function(taskId = null) {
         const modal = document.getElementById('training-modal');
         const form = document.getElementById('training-form');
@@ -42,7 +42,7 @@ Object.assign(Dashboard, {
         }
     },
 
-    // ⭐ Handle training form submit (ปรับปรุงสำหรับ JSONP)
+    // ⭐ Enhanced training form submit with JSONP
     handleTrainingFormSubmit: async function(event) {
         event.preventDefault();
         
@@ -74,7 +74,7 @@ Object.assign(Dashboard, {
         try {
             Utils.showLoading('กำลังบันทึกรายงาน...');
             
-            // Prepare data for submission (JSONP compatible)
+            // Prepare data for JSONP submission
             const reportData = {
                 taskGid: formData.get('taskGid') || this.generateTaskGID(),
                 knowledgeGained: formData.get('knowledgeGained').trim(),
@@ -85,12 +85,12 @@ Object.assign(Dashboard, {
                 timestamp: formData.get('timestamp') || new Date().toISOString()
             };
             
-            console.log('Submitting training report via JSONP:', reportData);
+            console.log('[Training] Submitting report via JSONP:', reportData);
             
             // Save to Google Sheets via JSONP
             const result = await API.saveTrainingReport(reportData);
             
-            console.log('Training report save result:', result);
+            console.log('[Training] Report saved successfully:', result);
             
             Utils.showSuccess('บันทึกรายงานการอบรมเรียบร้อย');
             this.closeTrainingModal();
@@ -105,6 +105,46 @@ Object.assign(Dashboard, {
                 Utils.showNetworkError();
             } else {
                 Utils.showError('ไม่สามารถบันทึกรายงานได้: ' + error.message);
+            }
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    // Generate Task GID
+    generateTaskGID: function() {
+        const timestamp = new Date().getTime();
+        const random = Math.random().toString(36).substr(2, 5);
+        return `TRN-${timestamp}-${random}`.toUpperCase();
+    },
+
+    // ⭐ Load tasks table with JSONP
+    loadTasksTable: async function() {
+        try {
+            Utils.showLoading('กำลังโหลดรายการงาน...');
+            
+            const filters = this.getCurrentFilters();
+            console.log('[Tasks] Loading with filters:', filters);
+            
+            const tasksData = await API.getTrainingTasks(filters);
+            
+            console.log('[Tasks] Data received:', tasksData);
+            
+            // Handle both array and object responses
+            const tasks = Array.isArray(tasksData) ? tasksData : (tasksData.data || []);
+            
+            dashboardData.tasks = tasks;
+            totalTasks = tasks.length;
+            
+            this.renderTasksTable();
+            
+        } catch (error) {
+            console.error('Failed to load tasks table:', error);
+            
+            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                Utils.showNetworkError();
+            } else {
+                Utils.showError('ไม่สามารถโหลดรายการงานได้: ' + error.message);
             }
         } finally {
             Utils.hideLoading();
@@ -259,7 +299,7 @@ Object.assign(Dashboard, {
         this.renderPaginationControls(totalPages, filteredTasks.length);
     },
 
-    // Mark task as complete (ปรับปรุงสำหรับ JSONP)
+    // ⭐ Mark task as complete with JSONP
     markTaskComplete: async function(taskId) {
         Utils.showConfirm(
             'ยืนยันการทำเครื่องหมาย',
@@ -268,8 +308,9 @@ Object.assign(Dashboard, {
                 try {
                     Utils.showLoading('กำลังอัปเดตสถานะ...');
                     
-                    console.log('Updating task status via JSONP:', taskId);
-                    await API.updateTaskStatus(taskId, 'Yes');
+                    console.log('[Task] Updating status via JSONP:', taskId);
+                    const result = await API.updateTaskStatus(taskId, 'Yes');
+                    console.log('[Task] Status updated:', result);
                     
                     Utils.showSuccess('อัปเดตสถานะเรียบร้อย');
                     await this.loadTasksTable();
@@ -290,13 +331,13 @@ Object.assign(Dashboard, {
         );
     },
 
-    // Export data (ปรับปรุงสำหรับ JSONP)
+    // ⭐ Export data with JSONP
     exportData: async function() {
         try {
             Utils.showLoading('กำลังเตรียมไฟล์ Excel...');
             
             const filters = this.getCurrentFilters();
-            console.log('Exporting data via JSONP with filters:', filters);
+            console.log('[Export] Exporting data via JSONP with filters:', filters);
             
             const result = await API.exportToExcel(filters);
             
@@ -322,7 +363,7 @@ Object.assign(Dashboard, {
         }
     },
 
-    // Sync data from Asana (ปรับปรุงสำหรับ JSONP)
+    // ⭐ Sync data with JSONP
     syncData: async function() {
         Utils.showConfirm(
             'ยืนยันการซิงค์ข้อมูล',
@@ -331,7 +372,7 @@ Object.assign(Dashboard, {
                 try {
                     Utils.showLoading('กำลังซิงค์ข้อมูลจาก Asana...');
                     
-                    console.log('Syncing data from Asana via JSONP...');
+                    console.log('[Sync] Syncing data from Asana via JSONP...');
                     const result = await API.syncFromAsana();
                     
                     Utils.showSuccess(`ซิงค์ข้อมูลเรียบร้อย: อัปเดต ${result.updated || 0} รายการ`);
@@ -428,7 +469,7 @@ Object.assign(Dashboard, {
         this.renderTasksTable();
     },
 
-    // ⭐ Render stats cards (มาจาก dashboard-ui.js)
+    // ⭐ Render stats cards
     renderStatsCards: function() {
         const statsSection = document.getElementById('stats-section');
         if (!statsSection || !dashboardData.stats) return;
@@ -516,16 +557,45 @@ Object.assign(Dashboard, {
         }
     },
 
-    // ⭐ Render monthly chart (placeholder - จะต้องเพิ่มฟังก์ชันนี้)
+    // ⭐ Render monthly chart (placeholder for Chart.js implementation)
     renderMonthlyChart: function() {
-        console.log('renderMonthlyChart called with data:', dashboardData.monthly);
-        // TODO: Implement chart rendering
+        console.log('[Chart] renderMonthlyChart called with data:', dashboardData.monthly);
+        
+        const canvas = document.getElementById('monthlyChart');
+        if (!canvas || !dashboardData.monthly) return;
+
+        // ถ้ามี Chart.js library จะใช้โค้ดด้านล่าง
+        // สำหรับตอนนี้แค่ log ข้อมูล
+        if (typeof Chart !== 'undefined') {
+            // Chart.js implementation here
+            console.log('[Chart] Chart.js available, rendering chart...');
+        } else {
+            console.log('[Chart] Chart.js not available, showing placeholder');
+            canvas.style.display = 'flex';
+            canvas.style.alignItems = 'center';
+            canvas.style.justifyContent = 'center';
+            canvas.style.background = '#f8f9fa';
+            canvas.innerHTML = '<div style="text-align: center;"><i class="fas fa-chart-bar text-4xl text-gray-400 mb-2"></i><br><span class="text-gray-500">แผนภูมิรายเดือน</span></div>';
+        }
     },
 
     // ⭐ Render user chart (placeholder)
     renderUserChart: function() {
-        console.log('renderUserChart called with data:', dashboardData.userStats);
-        // TODO: Implement chart rendering
+        console.log('[Chart] renderUserChart called with data:', dashboardData.userStats);
+        
+        const canvas = document.getElementById('userChart');
+        if (!canvas) return;
+
+        if (typeof Chart !== 'undefined') {
+            console.log('[Chart] Chart.js available for user chart...');
+        } else {
+            console.log('[Chart] Chart.js not available for user chart');
+            canvas.style.display = 'flex';
+            canvas.style.alignItems = 'center';
+            canvas.style.justifyContent = 'center';
+            canvas.style.background = '#f8f9fa';
+            canvas.innerHTML = '<div style="text-align: center;"><i class="fas fa-users text-4xl text-gray-400 mb-2"></i><br><span class="text-gray-500">แผนภูมิผู้ใช้</span></div>';
+        }
     },
 
     // ⭐ Render top users
@@ -534,6 +604,16 @@ Object.assign(Dashboard, {
         if (!container || !dashboardData.userStats) return;
 
         const topUsers = dashboardData.userStats.slice(0, 5);
+
+        if (topUsers.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-users text-4xl mb-4 opacity-50"></i>
+                    <p>ไม่มีข้อมูลผู้ใช้</p>
+                </div>
+            `;
+            return;
+        }
 
         const usersHTML = topUsers.map((user, index) => {
             const rankIcons = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
@@ -660,6 +740,48 @@ Object.assign(Dashboard, {
             const assignees = dashboardData.userStats.map(user => user.assignee);
             assigneeFilter.innerHTML = '<option value="">ทุกคน</option>' + 
                 assignees.map(assignee => `<option value="${assignee}">${assignee}</option>`).join('');
+        }
+    },
+
+    // ⭐ Toggle chart type (placeholder)
+    toggleChartType: function() {
+        console.log('[Chart] Toggle chart type requested');
+        Utils.showSuccess('ฟีเจอร์เปลี่ยนประเภทแผนภูมิจะเปิดใช้งานเมื่อมี Chart.js');
+    },
+
+    // ⭐ Load monthly chart with specific year
+    loadMonthlyChart: async function(year) {
+        try {
+            Utils.showLoading('กำลังโหลดข้อมูลรายเดือน...');
+            
+            const monthlyData = await API.getMonthlyStats(year);
+            dashboardData.monthly = monthlyData;
+            
+            this.renderMonthlyChart();
+            
+        } catch (error) {
+            console.error('Failed to load monthly chart:', error);
+            Utils.showError('ไม่สามารถโหลดข้อมูลรายเดือนได้');
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    // ⭐ Load upcoming tasks with specific days
+    loadUpcomingTasks: async function(days) {
+        try {
+            Utils.showLoading('กำลังโหลดงานที่กำลังจะมาถึง...');
+            
+            const upcomingTasks = await API.getUpcomingTasks(days);
+            dashboardData.upcomingTasks = upcomingTasks;
+            
+            this.renderUpcomingTasks();
+            
+        } catch (error) {
+            console.error('Failed to load upcoming tasks:', error);
+            Utils.showError('ไม่สามารถโหลดงานที่กำลังจะมาถึงได้');
+        } finally {
+            Utils.hideLoading();
         }
     }
 });
