@@ -1,5 +1,5 @@
 // Dashboard JavaScript - Modern Training Management System
-// โรงเรียนบ้านวังด้ง - ใช้ JSONP เป็นวิธีหลัก (แก้ไข CORS)
+// โรงเรียนบ้านวังด้ง - Complete JSONP Integration
 
 // Configuration
 const CONFIG = {
@@ -16,11 +16,11 @@ const CONFIG = {
         danger: '#ef4444',
         gray: '#6b7280'
     },
-    // ⭐ การตั้งค่าสำหรับ API
+    // ⭐ JSONP Configuration
     API_TIMEOUT: 30000, // 30 seconds
     RETRY_ATTEMPTS: 3,
     RETRY_DELAY: 1000, // 1 second
-    USE_JSONP_PRIMARY: true // ใช้ JSONP เป็นหลัก
+    USE_JSONP_ONLY: true // Force JSONP only
 };
 
 // Global Variables
@@ -152,16 +152,33 @@ const Utils = {
     // ⭐ Show network error
     showNetworkError: function() {
         this.showError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+    },
+
+    // ⭐ Clean up global functions
+    cleanupGlobalFunctions: function() {
+        const globalFunctions = Object.keys(window).filter(key => key.startsWith('jsonp_callback_'));
+        globalFunctions.forEach(funcName => {
+            try {
+                delete window[funcName];
+            } catch (e) {
+                console.warn('Could not delete global function:', funcName);
+            }
+        });
     }
 };
 
-// ⭐ API Functions - JSONP Primary
+// ⭐ Enhanced JSONP API Client
 const API = {
-    // ⭐ JSONP implementation (primary method)
+    // ⭐ Enhanced JSONP implementation with better error handling
     callJSONP: function(action, data = {}) {
         return new Promise((resolve, reject) => {
+            // Cleanup old callbacks periodically
+            if (Math.random() < 0.1) { // 10% chance to cleanup
+                Utils.cleanupGlobalFunctions();
+            }
+
             // Create unique callback name
-            const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
             
             // Create script element
             const script = document.createElement('script');
@@ -176,19 +193,26 @@ const API = {
             const cleanup = () => {
                 clearTimeout(timeout);
                 if (script.parentNode) {
-                    document.head.removeChild(script);
+                    try {
+                        document.head.removeChild(script);
+                    } catch (e) {
+                        console.warn('Script already removed');
+                    }
                 }
-                delete window[callbackName];
+                if (window[callbackName]) {
+                    delete window[callbackName];
+                }
             };
             
             // Define callback function
             window[callbackName] = function(response) {
                 cleanup();
                 
-                if (response.success) {
+                if (response && response.success) {
                     resolve(response.data);
                 } else {
-                    reject(new Error(response.error || 'Unknown error'));
+                    const errorMsg = response && response.error ? response.error : 'Unknown error occurred';
+                    reject(new Error(errorMsg));
                 }
             };
             
@@ -197,81 +221,52 @@ const API = {
             params.append('callback', callbackName);
             params.append('action', action);
             
-            // Add other parameters
+            // ⭐ Enhanced parameter encoding
             Object.keys(data).forEach(key => {
-                if (typeof data[key] === 'object') {
-                    params.append(key, JSON.stringify(data[key]));
-                } else {
-                    params.append(key, data[key]);
+                const value = data[key];
+                if (value !== null && value !== undefined) {
+                    if (typeof value === 'object') {
+                        try {
+                            params.append(key, JSON.stringify(value));
+                        } catch (e) {
+                            console.warn('Failed to stringify parameter:', key, value);
+                            params.append(key, String(value));
+                        }
+                    } else {
+                        params.append(key, String(value));
+                    }
                 }
             });
             
             // Set script source
-            script.src = CONFIG.GOOGLE_SCRIPT_URL + '?' + params.toString();
+            const url = CONFIG.GOOGLE_SCRIPT_URL + '?' + params.toString();
+            script.src = url;
             
             // Handle script error
             script.onerror = () => {
                 cleanup();
-                reject(new Error('Script loading failed - ไม่สามารถโหลด script ได้'));
+                reject(new Error('Script loading failed - ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้'));
             };
             
             // Add script to head
             document.head.appendChild(script);
+            
+            // Debug logging
+            console.log(`[JSONP] ${action}:`, data);
         });
     },
 
-    // ⭐ Main API call function
+    // ⭐ Main API call function (JSONP only)
     call: async function(action, data = {}) {
         // Check network status
         if (!Utils.isOnline()) {
             throw new Error('ไม่มีการเชื่อมต่ออินเทอร์เน็ต');
         }
 
-        // Use JSONP as primary method
-        if (CONFIG.USE_JSONP_PRIMARY) {
-            return await Utils.retry(async () => {
-                console.log(`Making JSONP call for action: ${action}`);
-                return await this.callJSONP(action, data);
-            });
-        }
-
-        // Fallback to fetch (unlikely to work due to CORS)
+        // Use JSONP with retry logic
         return await Utils.retry(async () => {
-            try {
-                console.log(`Attempting fetch for action: ${action}`);
-                
-                const response = await Promise.race([
-                    fetch(CONFIG.GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            action: action,
-                            ...data
-                        })
-                    }),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Request timeout')), CONFIG.API_TIMEOUT)
-                    )
-                ]);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-
-                return result.data;
-
-            } catch (fetchError) {
-                console.log('Fetch failed, trying JSONP fallback...', fetchError.message);
-                return await this.callJSONP(action, data);
-            }
+            console.log(`[API] Making JSONP call for action: ${action}`);
+            return await this.callJSONP(action, data);
         });
     },
 
@@ -300,14 +295,28 @@ const API = {
         return await this.call('getTrainingTasks', { filters });
     },
 
-    // Save training report
+    // ⭐ Enhanced save training report with better data formatting
     saveTrainingReport: async function(reportData) {
-        return await this.call('saveTrainingReport', reportData);
+        // Clean and validate data before sending
+        const cleanData = {
+            taskGid: reportData.taskGid || '',
+            knowledgeGained: String(reportData.knowledgeGained || '').trim(),
+            implementationPlan: String(reportData.implementationPlan || '').trim(),
+            knowledgeSharing: String(reportData.knowledgeSharing || '').trim(),
+            suggestionsImages: String(reportData.suggestionsImages || '').trim(),
+            lineUid: String(reportData.lineUid || '').trim(),
+            timestamp: reportData.timestamp || new Date().toISOString()
+        };
+
+        return await this.call('saveTrainingReport', cleanData);
     },
 
     // Update task status
     updateTaskStatus: async function(taskId, status) {
-        return await this.call('updateTaskStatus', { taskId, status });
+        return await this.call('updateTaskStatus', { 
+            taskId: String(taskId), 
+            status: String(status) 
+        });
     },
 
     // Export to Excel
@@ -363,7 +372,7 @@ const Dashboard = {
     initNetworkMonitoring: function() {
         window.addEventListener('online', () => {
             Utils.showSuccess('เชื่อมต่ออินเทอร์เน็ตแล้ว');
-            this.refreshData();
+            setTimeout(() => this.refreshData(), 1000);
         });
 
         window.addEventListener('offline', () => {
@@ -494,6 +503,7 @@ const Dashboard = {
                 try {
                     await this.exportData();
                 } catch (error) {
+                    console.error('Export error:', error);
                     if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
                         Utils.showNetworkError();
                     } else {
@@ -508,6 +518,7 @@ const Dashboard = {
                 try {
                     await this.syncData();
                 } catch (error) {
+                    console.error('Sync error:', error);
                     if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
                         Utils.showNetworkError();
                     } else {
@@ -551,41 +562,46 @@ const Dashboard = {
         }
     },
 
-    // Load dashboard data with better error handling
+    // ⭐ Enhanced load dashboard data with better error handling
     loadDashboardData: async function() {
         try {
             Utils.showLoading('กำลังโหลดข้อมูล Dashboard...');
 
-            console.log('Loading dashboard data via JSONP...');
+            console.log('[Dashboard] Loading dashboard data via JSONP...');
 
             // Load all data in parallel with individual error handling
-            const [statsData, monthlyData, userStatsData, upcomingTasksData] = await Promise.allSettled([
-                API.getDashboardStats(),
-                API.getMonthlyStats(),
-                API.getUserStats(),
-                API.getUpcomingTasks(7)
-            ]);
+            const promises = [
+                API.getDashboardStats().catch(err => {
+                    console.error('Stats loading failed:', err);
+                    return null;
+                }),
+                API.getMonthlyStats().catch(err => {
+                    console.error('Monthly stats loading failed:', err);
+                    return null;
+                }),
+                API.getUserStats().catch(err => {
+                    console.error('User stats loading failed:', err);
+                    return [];
+                }),
+                API.getUpcomingTasks(7).catch(err => {
+                    console.error('Upcoming tasks loading failed:', err);
+                    return [];
+                })
+            ];
 
-            // Process results and handle individual failures
+            const [statsData, monthlyData, userStatsData, upcomingTasksData] = await Promise.all(promises);
+
+            // Store data with fallbacks
             dashboardData = {
-                stats: statsData.status === 'fulfilled' ? statsData.value : null,
-                monthly: monthlyData.status === 'fulfilled' ? monthlyData.value : null,
-                userStats: userStatsData.status === 'fulfilled' ? userStatsData.value : [],
-                upcomingTasks: upcomingTasksData.status === 'fulfilled' ? upcomingTasksData.value : []
+                stats: statsData || this.getDefaultStats(),
+                monthly: monthlyData || this.getDefaultMonthly(),
+                userStats: userStatsData || [],
+                upcomingTasks: upcomingTasksData || []
             };
 
-            // Log any failures
-            const failures = [statsData, monthlyData, userStatsData, upcomingTasksData]
-                .filter(result => result.status === 'rejected')
-                .map(result => result.reason.message);
+            console.log('[Dashboard] Data loaded successfully:', dashboardData);
 
-            if (failures.length > 0) {
-                console.warn('Some data failed to load:', failures);
-            }
-
-            console.log('Dashboard data loaded:', dashboardData);
-
-            // Render components (handle missing data gracefully)
+            // Render components
             this.renderStatsCards();
             this.renderMonthlyChart();
             this.renderUserChart();
@@ -597,6 +613,16 @@ const Dashboard = {
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
             
+            // Use default data on complete failure
+            dashboardData = {
+                stats: this.getDefaultStats(),
+                monthly: this.getDefaultMonthly(),
+                userStats: [],
+                upcomingTasks: []
+            };
+
+            this.renderStatsCards();
+            
             if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
                 Utils.showNetworkError();
             } else {
@@ -605,10 +631,64 @@ const Dashboard = {
         } finally {
             Utils.hideLoading();
         }
+    },
+
+    // ⭐ Default data fallbacks
+    getDefaultStats: function() {
+        return {
+            summary: {
+                totalTasks: 0,
+                completedTasks: 0,
+                pendingTasks: 0,
+                currentYearTasks: 0,
+                currentMonthTasks: 0,
+                upcomingTasks: 0,
+                uniqueAssignees: 0,
+                completionRate: 0
+            },
+            currentYear: new Date().getFullYear() + 543,
+            currentMonth: new Date().getMonth() + 1
+        };
+    },
+
+    getDefaultMonthly: function() {
+        const thaiMonths = [
+            'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+            'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+        ];
+
+        return {
+            monthlyData: thaiMonths.map((month, index) => ({
+                month: month,
+                monthNumber: index + 1,
+                total: 0,
+                completed: 0,
+                pending: 0
+            })),
+            targetYear: new Date().getFullYear() + 543
+        };
+    },
+
+    // ⭐ Refresh data with better error handling
+    refreshData: async function() {
+        try {
+            Utils.showLoading('กำลังรีเฟรชข้อมูล...');
+            await this.loadDashboardData();
+            console.log('[Dashboard] Data refreshed successfully');
+        } catch (error) {
+            console.error('Failed to refresh data:', error);
+            // Don't show error for auto-refresh failures
+            if (!error.message.includes('timeout')) {
+                Utils.showError('ไม่สามารถรีเฟรชข้อมูลได้');
+            }
+        }
     }
 };
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    Dashboard.init();
+    // Add some startup delay to ensure all resources are loaded
+    setTimeout(() => {
+        Dashboard.init();
+    }, 100);
 });
