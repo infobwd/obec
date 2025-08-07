@@ -1,5 +1,5 @@
 // Dashboard JavaScript - Modern Training Management System
-// โรงเรียนบ้านวังด้ง - ส่วนที่ 1: Configuration และ Core Functions (ปรับปรุงแล้ว)
+// โรงเรียนบ้านวังด้ง - ใช้ JSONP เป็นวิธีหลัก (แก้ไข CORS)
 
 // Configuration
 const CONFIG = {
@@ -16,10 +16,11 @@ const CONFIG = {
         danger: '#ef4444',
         gray: '#6b7280'
     },
-    // ⭐ เพิ่มการตั้งค่าสำหรับ API
+    // ⭐ การตั้งค่าสำหรับ API
     API_TIMEOUT: 30000, // 30 seconds
     RETRY_ATTEMPTS: 3,
-    RETRY_DELAY: 1000 // 1 second
+    RETRY_DELAY: 1000, // 1 second
+    USE_JSONP_PRIMARY: true // ใช้ JSONP เป็นหลัก
 };
 
 // Global Variables
@@ -154,18 +155,91 @@ const Utils = {
     }
 };
 
-// ⭐ Updated API Functions with better error handling
+// ⭐ API Functions - JSONP Primary
 const API = {
-    // Base API call function with JSONP support and retry logic
+    // ⭐ JSONP implementation (primary method)
+    callJSONP: function(action, data = {}) {
+        return new Promise((resolve, reject) => {
+            // Create unique callback name
+            const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            
+            // Create script element
+            const script = document.createElement('script');
+            
+            // Set timeout
+            const timeout = setTimeout(() => {
+                cleanup();
+                reject(new Error('Request timeout - ไม่ได้รับการตอบสนองจากเซิร์ฟเวอร์'));
+            }, CONFIG.API_TIMEOUT);
+            
+            // Cleanup function
+            const cleanup = () => {
+                clearTimeout(timeout);
+                if (script.parentNode) {
+                    document.head.removeChild(script);
+                }
+                delete window[callbackName];
+            };
+            
+            // Define callback function
+            window[callbackName] = function(response) {
+                cleanup();
+                
+                if (response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(new Error(response.error || 'Unknown error'));
+                }
+            };
+            
+            // Build query parameters
+            const params = new URLSearchParams();
+            params.append('callback', callbackName);
+            params.append('action', action);
+            
+            // Add other parameters
+            Object.keys(data).forEach(key => {
+                if (typeof data[key] === 'object') {
+                    params.append(key, JSON.stringify(data[key]));
+                } else {
+                    params.append(key, data[key]);
+                }
+            });
+            
+            // Set script source
+            script.src = CONFIG.GOOGLE_SCRIPT_URL + '?' + params.toString();
+            
+            // Handle script error
+            script.onerror = () => {
+                cleanup();
+                reject(new Error('Script loading failed - ไม่สามารถโหลด script ได้'));
+            };
+            
+            // Add script to head
+            document.head.appendChild(script);
+        });
+    },
+
+    // ⭐ Main API call function
     call: async function(action, data = {}) {
         // Check network status
         if (!Utils.isOnline()) {
             throw new Error('ไม่มีการเชื่อมต่ออินเทอร์เน็ต');
         }
 
+        // Use JSONP as primary method
+        if (CONFIG.USE_JSONP_PRIMARY) {
+            return await Utils.retry(async () => {
+                console.log(`Making JSONP call for action: ${action}`);
+                return await this.callJSONP(action, data);
+            });
+        }
+
+        // Fallback to fetch (unlikely to work due to CORS)
         return await Utils.retry(async () => {
             try {
-                // Try POST request first (preferred method)
+                console.log(`Attempting fetch for action: ${action}`);
+                
                 const response = await Promise.race([
                     fetch(CONFIG.GOOGLE_SCRIPT_URL, {
                         method: 'POST',
@@ -195,67 +269,9 @@ const API = {
                 return result.data;
 
             } catch (fetchError) {
-                console.log('POST request failed, trying JSONP...', fetchError.message);
-                
-                // Fallback to JSONP if POST fails
+                console.log('Fetch failed, trying JSONP fallback...', fetchError.message);
                 return await this.callJSONP(action, data);
             }
-        });
-    },
-
-    // JSONP implementation with timeout
-    callJSONP: function(action, data = {}) {
-        return new Promise((resolve, reject) => {
-            // Create unique callback name
-            const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-            
-            // Create script element
-            const script = document.createElement('script');
-            
-            // Set timeout
-            const timeout = setTimeout(() => {
-                cleanup();
-                reject(new Error('Request timeout'));
-            }, CONFIG.API_TIMEOUT);
-            
-            // Cleanup function
-            const cleanup = () => {
-                clearTimeout(timeout);
-                if (script.parentNode) {
-                    document.head.removeChild(script);
-                }
-                delete window[callbackName];
-            };
-            
-            // Define callback function
-            window[callbackName] = function(response) {
-                cleanup();
-                
-                if (response.error) {
-                    reject(new Error(response.error));
-                } else {
-                    resolve(response.data);
-                }
-            };
-            
-            // Build query parameters
-            const params = new URLSearchParams({
-                callback: callbackName,
-                action: action,
-                data: JSON.stringify(data)
-            });
-            
-            // Set script source
-            script.src = CONFIG.GOOGLE_SCRIPT_URL + '?' + params.toString();
-            
-            // Handle script error
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('Script loading failed'));
-            };
-            
-            // Add script to head
-            document.head.appendChild(script);
         });
     },
 
@@ -329,7 +345,7 @@ const Dashboard = {
             setInterval(() => this.refreshData(), CONFIG.REFRESH_INTERVAL);
             
             Utils.hideLoading();
-            Utils.showSuccess('ระบบพร้อมใช้งาน');
+            Utils.showSuccess('ระบบพร้อมใช้งาน (JSONP Mode)');
             
         } catch (error) {
             console.error('Dashboard initialization failed:', error);
@@ -540,6 +556,8 @@ const Dashboard = {
         try {
             Utils.showLoading('กำลังโหลดข้อมูล Dashboard...');
 
+            console.log('Loading dashboard data via JSONP...');
+
             // Load all data in parallel with individual error handling
             const [statsData, monthlyData, userStatsData, upcomingTasksData] = await Promise.allSettled([
                 API.getDashboardStats(),
@@ -564,6 +582,8 @@ const Dashboard = {
             if (failures.length > 0) {
                 console.warn('Some data failed to load:', failures);
             }
+
+            console.log('Dashboard data loaded:', dashboardData);
 
             // Render components (handle missing data gracefully)
             this.renderStatsCards();
