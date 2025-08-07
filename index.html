@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการข้อมูลการประชุมอบรม - โรงเรียนบ้านวังด้ง</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary-blue: #1a73e8;
+            --secondary-blue: #4285f4;
+            --light-blue: #e8f0fe;
+            --primary-yellow: #fbbc05;
+            --light-yellow: #fef7e0;
+            --white: #ffffff;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+        }
+        
+        body {
+            font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, var(--light-blue) 0%, var(--white) 50%, var(--light-yellow) 100%);
+            min-height: 100vh;
+            padding-top: 80px; /* Space for fixed navbar */
+        }
+        
+        /* Modern Card Styles */
+        .modern-card {
+            background: var(--white);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(26, 115, 232, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(26, 115, 232, 0.1);
+            overflow: hidden;
+        }
+        
+        .modern-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(26, 115, 232, 0.15);
+        }
+        
+        /* Stat Cards with New Theme */
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+            color: var(--white);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card.yellow {
+            background: linear-gradient(135deg, var(--primary-yellow) 0%, #f59e0b 100%);
+            color: var(--gray-800);
+        }
+        
+        .stat-card.white {
+            background: var(--white);
+            color: var(--gray-800);
+            border: 2px solid var(--primary-blue);
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        
+        .stat-card-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Button Styles */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+            color: var(--white);
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(26, 115, 232, 0.3);
+        }
+        
+        .btn-secondary {
+            background: var(--white);
+            color: var(--primary-blue);
+            border: 2px solid var(--primary-blue);
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .btn-secondary:hover {
+            background: var(--primary-blue);
+            color: var(--white);
+            transform: translateY(-2px);
+        }
+        
+        .btn-yellow {
+            background: linear-gradient(135deg, var(--primary-yellow) 0%, #f59e0b 100%);
+            color: var(--gray-800);
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .btn-yellow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(251, 188, 5, 0.3);
+        }
+        
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(26, 115, 232, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .loading-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.6s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        /* Chart Container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background: var(--white);
+            border-radius: 16px;
+            padding: 1rem;
+        }
+        
+        /* Task Items */
+        .task-item {
+            border-left: 4px solid transparent;
+            transition: all 0.3s ease;
+            border-radius: 0 12px 12px 0;
+        }
+        
+        .task-item.today { 
+            border-left-color: #ef4444; 
+            background: linear-gradient(90deg, #fef2f2 0%, var(--white) 100%); 
+        }
+        .task-item.urgent { 
+            border-left-color: var(--primary-yellow); 
+            background: linear-gradient(90deg, var(--light-yellow) 0%, var(--white) 100%); 
+        }
+        .task-item.normal { 
+            border-left-color: #10b981; 
+            background: linear-gradient(90deg, #f0fdf4 0%, var(--white) 100%); 
+        }
+        
+        /* User Stats */
+        .user-stat-item {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+            border-left: 4px solid var(--gray-200);
+            box-shadow: 0 2px 8px rgba(26, 115, 232, 0.05);
+        }
+        
+        .user-stat-item:hover {
+            transform: translateX(8px);
+            border-left-color: var(--primary-blue);
+            box-shadow: 0 8px 25px rgba(26, 115, 232, 0.15);
+        }
+        
+        /* Progress Bar */
+        .progress-bar {
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-blue), var(--secondary-blue));
+            transition: width 0.6s ease;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body { padding-top: 70px; }
+            .dashboard-grid { grid-template-columns: 1fr; gap: 1rem; }
+            .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+            .chart-container { height: 250px; }
+        }
+        
+        /* Fixed Navbar Styles */
+        .navbar-fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .navbar-fixed.scrolled {
+            box-shadow: 0 4px 20px rgba(26, 115, 232, 0.2);
+        }
+        
+        /* Footer Styles */
+        .footer {
+            background: linear-gradient(135deg, var(--gray-800) 0%, var(--gray-900) 100%);
+            color: var(--white);
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+        
+        /* Form Styles */
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            background: var(--white);
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+        }
+        
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            background: var(--white);
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(15, 23, 42, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            background: var(--white);
+            border-radius: 20px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.9) translateY(20px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 20px 60px rgba(26, 115, 232, 0.2);
+        }
+        
+        .modal-overlay.active .modal-content {
+            transform: scale(1) translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="text-white text-center">
+            <i class="fas fa-spinner fa-spin fa-3x mb-4"></i>
+            <div id="loading-text" class="text-lg font-medium">กำลังโหลดข้อมูล...</div>
+        </div>
+    </div>
+
+    <!-- Fixed Navbar -->
+    <nav id="navbar" class="navbar-fixed">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <!-- Logo and Title -->
+                <div class="flex items-center space-x-4">
+                    <img src="https://raw.githubusercontent.com/infobwd/obec/refs/heads/main/OBEClogo.png" 
+                         alt="โลโก้โรงเรียนบ้านวังด้ง" 
+                         class="h-12 w-12 object-contain bg-white rounded-full p-1">
+                    <div>
+                        <h1 class="text-xl font-bold text-white">โรงเรียนบ้านวังด้ง</h1>
+                        <p class="text-sm text-blue-100">ระบบจัดการข้อมูลการประชุมอบรม</p>
+                    </div>
+                </div>
+                
+                <!-- Navigation Links -->
+                <div class="hidden md:flex items-center space-x-6">
+                    <a href="#dashboard" class="text-white hover:text-yellow-300 transition-colors duration-300 font-medium">
+                        <i class="fas fa-chart-bar mr-2"></i>Dashboard
+                    </a>
+                    <a href="#reports" class="text-white hover:text-yellow-300 transition-colors duration-300 font-medium">
+                        <i class="fas fa-file-alt mr-2"></i>รายงาน
+                    </a>
+                    <button id="open-training-modal" class="btn-yellow">
+                        <i class="fas fa-plus mr-2"></i>บันทึกการอบรม
+                    </button>
+                </div>
+                
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" class="md:hidden text-white">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Mobile Menu -->
+            <div id="mobile-menu" class="md:hidden mt-4 pb-4 border-t border-blue-400 pt-4 hidden">
+                <div class="flex flex-col space-y-3">
+                    <a href="#dashboard" class="text-white hover:text-yellow-300 transition-colors duration-300 font-medium">
+                        <i class="fas fa-chart-bar mr-2"></i>Dashboard
+                    </a>
+                    <a href="#reports" class="text-white hover:text-yellow-300 transition-colors duration-300 font-medium">
+                        <i class="fas fa-file-alt mr-2"></i>รายงาน
+                    </a>
+                    <button id="open-training-modal-mobile" class="btn-yellow w-full justify-center">
+                        <i class="fas fa-plus mr-2"></i>บันทึกการอบรม
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Dashboard -->
+    <div class="container mx-auto px-4 py-8">
+        <!-- Welcome Section -->
+        <div class="modern-card mb-8 fade-in">
+            <div class="p-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">ยินดีต้อนรับสู่ระบบจัดการข้อมูลการประชุมอบรม</h2>
+                        <p class="text-gray-600">Dashboard และสถิติการเข้าร่วมประชุมอบรม โรงเรียนบ้านวังด้ง</p>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <div class="text-right">
+                            <div id="current-date" class="text-sm text-gray-500"></div>
+                            <div id="current-time" class="font-semibold text-gray-700"></div>
+                        </div>
+                        <button id="refresh-btn" class="btn-secondary">
+                            <i class="fas fa-sync-alt mr-2"></i> รีเฟรช
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div id="stats-section" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8 fade-in">
+            <!-- Stats cards will be dynamically generated -->
+        </div>
+
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <!-- Monthly Chart -->
+            <div class="lg:col-span-2 modern-card fade-in">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-chart-line text-blue-600 mr-2"></i>
+                            สถิติรายเดือน
+                        </h3>
+                        <div class="flex items-center space-x-2">
+                            <select id="year-selector" class="form-input text-sm w-auto">
+                                <!-- Years will be populated -->
+                            </select>
+                            <button id="toggle-chart-type" class="btn-secondary text-sm">
+                                <i class="fas fa-exchange-alt mr-1"></i> เปลี่ยนแบบ
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Users -->
+            <div class="modern-card fade-in">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <i class="fas fa-trophy text-yellow-500 mr-2"></i>
+                        ผู้เข้าร่วมประชุม/อบรมมากสุด
+                    </h3>
+                    <div id="top-users" class="space-y-3">
+                        <!-- Top users will be populated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Second Row -->
+        <div class="dashboard-grid grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Upcoming Tasks -->
+            <div class="modern-card fade-in">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-calendar-check text-green-600 mr-2"></i>
+                            งานที่กำลังจะมาถึง
+                        </h3>
+                        <div class="flex space-x-2">
+                            <button id="days-7" class="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition active-period">7 วัน</button>
+                            <button id="days-15" class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">15 วัน</button>
+                            <button id="days-30" class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">30 วัน</button>
+                        </div>
+                    </div>
+                    <div id="upcoming-tasks" class="space-y-3 max-h-80 overflow-y-auto">
+                        <!-- Upcoming tasks will be populated -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Performance Chart -->
+            <div class="modern-card fade-in">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <i class="fas fa-users text-purple-600 mr-2"></i>
+                        สถิติผู้เข้าร่วมประชุม/อบรม
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="userChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter and Actions -->
+        <div class="modern-card fade-in mb-8">
+            <div class="p-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+                    <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                        <i class="fas fa-filter text-gray-600 mr-2"></i>
+                        ตัวกรองและการดำเนินการ
+                    </h3>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="export-excel" class="btn-primary">
+                            <i class="fas fa-file-excel"></i> ส่งออก Excel
+                        </button>
+                        <button id="sync-asana" class="btn-secondary">
+                            <i class="fas fa-sync"></i> ซิงค์จาก Asana
+                        </button>
+                        <button id="view-reports" class="btn-yellow">
+                            <i class="fas fa-chart-bar"></i> ดูรายงาน
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">ปี (พ.ศ.)</label>
+                        <select id="filter-year" class="form-input">
+                            <option value="">ทุกปี</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">ผู้เข้าร่วม</label>
+                        <select id="filter-assignee" class="form-input">
+                            <option value="">ทุกคน</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">เดือน</label>
+                        <select id="filter-month" class="form-input">
+                            <option value="">ทุกเดือน</option>
+                            <option value="1">มกราคม</option>
+                            <option value="2">กุมภาพันธ์</option>
+                            <option value="3">มีนาคม</option>
+                            <option value="4">เมษายน</option>
+                            <option value="5">พฤษภาคม</option>
+                            <option value="6">มิถุนายน</option>
+                            <option value="7">กรกฎาคม</option>
+                            <option value="8">สิงหาคม</option>
+                            <option value="9">กันยายน</option>
+                            <option value="10">ตุลาคม</option>
+                            <option value="11">พฤศจิกายน</option>
+                            <option value="12">ธันวาคม</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">สถานะ</label>
+                        <select id="filter-status" class="form-input">
+                            <option value="">ทั้งหมด</option>
+                            <option value="Yes">เสร็จสมบูรณ์</option>
+                            <option value="No">ยังไม่เสร็จ</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Table -->
+        <div class="modern-card fade-in">
+            <div class="p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-list text-gray-600 mr-2"></i>
+                    รายการงานอบรม
+                    <span id="tasks-count" class="ml-2 bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full"></span>
+                </h3>
+                <!-- Controls -->
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-600">แสดงต่อหน้า</label>
+                    <select id="page-size" class="form-input w-auto">
+                      <option>10</option>
+                      <option>20</option>
+                      <option>50</option>
+                      <option>100</option>
+                    </select>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input id="task-search" type="text" placeholder="ค้นหาชื่องาน/ผู้เข้าร่วม..." 
+                           class="form-input w-64">
+                    <button id="clear-search" class="btn-secondary">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Table -->
+                <div class="overflow-x-auto">
+                    <table id="tasks-table" class="w-full">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-200">
+                                <th class="text-left py-3 px-4 font-semibold text-gray-700">ชื่องาน</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-700">ผู้เข้าร่วม</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-700">วันที่ครบกำหนด</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-700">สถานะ</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-700">การดำเนินการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tasks-tbody">
+                            <!-- Tasks will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination" class="flex justify-between items-center mt-4">
+                    <div id="pagination-info" class="text-sm text-gray-600"></div>
+                    <div id="pagination-controls" class="flex gap-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Training Report Modal -->
+    <div id="training-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">บันทึกรายงานการประชุมอบรม</h2>
+                <button id="close-training-modal" class="text-gray-400 hover:text-gray-600 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="training-form" class="space-y-4">
+                <div class="hidden">
+                    <input type="text" id="task-gid" name="taskGid" class="form-input">
+                    <input type="text" id="timestamp" name="timestamp" class="form-input">
+                </div>
+                
+                <div>
+                    <label for="knowledge-gained" class="block text-sm font-medium text-gray-700 mb-2">
+                        1. ความรู้/ผลที่ได้รับ <span class="text-red-500">*</span>
+                    </label>
+                    <textarea id="knowledge-gained" name="knowledgeGained" required 
+                              class="form-textarea" 
+                              placeholder="กรุณาระบุความรู้หรือผลที่ได้รับจากการประชุมอบรม..."></textarea>
+                </div>
+                
+                <div>
+                    <label for="implementation-plan" class="block text-sm font-medium text-gray-700 mb-2">
+                        2. แนวทางปฏิบัติที่ต้องดำเนินการต่อหรือนำไปพัฒนา <span class="text-red-500">*</span>
+                    </label>
+                    <textarea id="implementation-plan" name="implementationPlan" required 
+                              class="form-textarea" 
+                              placeholder="กรุณาระบุแนวทางปฏิบัติที่จะนำไปดำเนินการ..."></textarea>
+                </div>
+                
+                <div>
+                    <label for="knowledge-sharing" class="block text-sm font-medium text-gray-700 mb-2">
+                        3. การนำความรู้ ความสามารถ ประสบการณ์ ทักษะหรืออื่นๆ ที่ได้รับในครั้งนี้ไปเผยแพร่ แก่ผู้ที่เกี่ยวข้องหรือเพื่อพัฒนางานในหน้าที่ <span class="text-red-500">*</span>
+                    </label>
+                    <textarea id="knowledge-sharing" name="knowledgeSharing" required 
+                              class="form-textarea" 
+                              placeholder="กรุณาระบุวิธีการเผยแพร่ความรู้ที่ได้รับ..."></textarea>
+                </div>
+                
+                <div>
+                    <label for="suggestions-images" class="block text-sm font-medium text-gray-700 mb-2">
+                        4. ข้อเสนอแนะรูปภาพ
+                    </label>
+                    <input type="text" id="suggestions-images" name="suggestionsImages" 
+                           class="form-input" 
+                           placeholder="URL รูปภาพหรือข้อเสนอแนะเพิ่มเติม...">
+                </div>
+                
+                <div>
+                    <label for="line-uid" class="block text-sm font-medium text-gray-700 mb-2">
+                        LINE UID <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" id="line-uid" name="lineUid" required 
+                           class="form-input" 
+                           placeholder="กรุณาระบุ LINE UID ของท่าน...">
+                </div>
+                
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button type="button" id="cancel-training" class="btn-secondary">
+                        <i class="fas fa-times mr-2"></i>ยกเลิก
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save mr-2"></i>บันทึก
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center space-x-4 mb-4 md:mb-0">
+                    <img src="https://raw.githubusercontent.com/infobwd/obec/refs/heads/main/OBEClogo.png" 
+                         alt="โลโก้โรงเรียนบ้านวังด้ง" 
+                         class="h-12 w-12 object-contain bg-white rounded-full p-1">
+                    <div>
+                        <h3 class="text-lg font-bold">โรงเรียนบ้านวังด้ง</h3>
+                        <p class="text-gray-300 text-sm">ระบบจัดการข้อมูลการประชุมอบรม</p>
+                    </div>
+                </div>
+                
+                <div class="text-center md:text-right">
+                    <p class="text-gray-300 text-sm">
+                        © 2025 โรงเรียนบ้านวังด้ง. สงวนลิขสิทธิ์.
+                    </p>
+                    <p class="text-gray-400 text-xs mt-1">
+                        พัฒนาโดยระบบจัดการข้อมูลการประชุมอบรม
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript Files -->
+    <script src="dashboard.js"></script>
+    <script src="dashboard-ui.js"></script>
+    <script src="dashboard-forms.js"></script>
+</body>
+</html>
+
