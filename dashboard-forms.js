@@ -1,4 +1,4 @@
-// Dashboard Forms - ปรับปรุงเพื่อรองรับการบันทึกรายงานการอบรม
+// Dashboard Forms - ปรับปรุงเพื่อรองรับ JSONP และการบันทึกรายงานการอบรม
 // เพิ่มส่วนนี้ใน Dashboard object
 
 Object.assign(Dashboard, {
@@ -42,7 +42,7 @@ Object.assign(Dashboard, {
         }
     },
 
-    // ⭐ Handle training form submit (ปรับปรุงแล้ว)
+    // ⭐ Handle training form submit (ปรับปรุงสำหรับ JSONP)
     handleTrainingFormSubmit: async function(event) {
         event.preventDefault();
         
@@ -74,7 +74,7 @@ Object.assign(Dashboard, {
         try {
             Utils.showLoading('กำลังบันทึกรายงาน...');
             
-            // Prepare data for submission
+            // Prepare data for submission (JSONP compatible)
             const reportData = {
                 taskGid: formData.get('taskGid') || this.generateTaskGID(),
                 knowledgeGained: formData.get('knowledgeGained').trim(),
@@ -85,10 +85,12 @@ Object.assign(Dashboard, {
                 timestamp: formData.get('timestamp') || new Date().toISOString()
             };
             
-            console.log('Submitting training report:', reportData);
+            console.log('Submitting training report via JSONP:', reportData);
             
-            // Save to Google Sheets
+            // Save to Google Sheets via JSONP
             const result = await API.saveTrainingReport(reportData);
+            
+            console.log('Training report save result:', result);
             
             Utils.showSuccess('บันทึกรายงานการอบรมเรียบร้อย');
             this.closeTrainingModal();
@@ -103,42 +105,6 @@ Object.assign(Dashboard, {
                 Utils.showNetworkError();
             } else {
                 Utils.showError('ไม่สามารถบันทึกรายงานได้: ' + error.message);
-            }
-        } finally {
-            Utils.hideLoading();
-        }
-    },
-
-    // ⭐ Generate Task GID (ใหม่)
-    generateTaskGID: function() {
-        const timestamp = new Date().getTime();
-        const random = Math.random().toString(36).substr(2, 5);
-        return `TRN-${timestamp}-${random}`.toUpperCase();
-    },
-
-    // Load tasks table (ปรับปรุงแล้ว)
-    loadTasksTable: async function() {
-        try {
-            Utils.showLoading('กำลังโหลดรายการงาน...');
-            
-            const filters = this.getCurrentFilters();
-            const tasksData = await API.getTrainingTasks(filters);
-            
-            // Handle both array and object responses
-            const tasks = Array.isArray(tasksData) ? tasksData : (tasksData.data || []);
-            
-            dashboardData.tasks = tasks;
-            totalTasks = tasks.length;
-            
-            this.renderTasksTable();
-            
-        } catch (error) {
-            console.error('Failed to load tasks table:', error);
-            
-            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
-                Utils.showNetworkError();
-            } else {
-                Utils.showError('ไม่สามารถโหลดรายการงานได้');
             }
         } finally {
             Utils.hideLoading();
@@ -197,8 +163,8 @@ Object.assign(Dashboard, {
         if (searchInput && searchInput.value.trim()) {
             const searchTerm = searchInput.value.trim().toLowerCase();
             filteredTasks = dashboardData.tasks.filter(task => 
-                task.name.toLowerCase().includes(searchTerm) ||
-                task.assignee.toLowerCase().includes(searchTerm)
+                (task.name && task.name.toLowerCase().includes(searchTerm)) ||
+                (task.assignee && task.assignee.toLowerCase().includes(searchTerm))
             );
         }
 
@@ -293,7 +259,7 @@ Object.assign(Dashboard, {
         this.renderPaginationControls(totalPages, filteredTasks.length);
     },
 
-    // Mark task as complete (ปรับปรุงแล้ว)
+    // Mark task as complete (ปรับปรุงสำหรับ JSONP)
     markTaskComplete: async function(taskId) {
         Utils.showConfirm(
             'ยืนยันการทำเครื่องหมาย',
@@ -302,6 +268,7 @@ Object.assign(Dashboard, {
                 try {
                     Utils.showLoading('กำลังอัปเดตสถานะ...');
                     
+                    console.log('Updating task status via JSONP:', taskId);
                     await API.updateTaskStatus(taskId, 'Yes');
                     
                     Utils.showSuccess('อัปเดตสถานะเรียบร้อย');
@@ -314,7 +281,7 @@ Object.assign(Dashboard, {
                     if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
                         Utils.showNetworkError();
                     } else {
-                        Utils.showError('ไม่สามารถอัปเดตสถานะได้');
+                        Utils.showError('ไม่สามารถอัปเดตสถานะได้: ' + error.message);
                     }
                 } finally {
                     Utils.hideLoading();
@@ -323,12 +290,14 @@ Object.assign(Dashboard, {
         );
     },
 
-    // Export data (ปรับปรุงแล้ว)
+    // Export data (ปรับปรุงสำหรับ JSONP)
     exportData: async function() {
         try {
             Utils.showLoading('กำลังเตรียมไฟล์ Excel...');
             
             const filters = this.getCurrentFilters();
+            console.log('Exporting data via JSONP with filters:', filters);
+            
             const result = await API.exportToExcel(filters);
             
             if (result.downloadUrl) {
@@ -353,7 +322,7 @@ Object.assign(Dashboard, {
         }
     },
 
-    // Sync data from Asana (ปรับปรุงแล้ว)
+    // Sync data from Asana (ปรับปรุงสำหรับ JSONP)
     syncData: async function() {
         Utils.showConfirm(
             'ยืนยันการซิงค์ข้อมูล',
@@ -362,6 +331,7 @@ Object.assign(Dashboard, {
                 try {
                     Utils.showLoading('กำลังซิงค์ข้อมูลจาก Asana...');
                     
+                    console.log('Syncing data from Asana via JSONP...');
                     const result = await API.syncFromAsana();
                     
                     Utils.showSuccess(`ซิงค์ข้อมูลเรียบร้อย: อัปเดต ${result.updated || 0} รายการ`);
@@ -456,6 +426,241 @@ Object.assign(Dashboard, {
         if (page < 1 || page > Math.ceil(totalTasks / pageSize)) return;
         currentPage = page;
         this.renderTasksTable();
+    },
+
+    // ⭐ Render stats cards (มาจาก dashboard-ui.js)
+    renderStatsCards: function() {
+        const statsSection = document.getElementById('stats-section');
+        if (!statsSection || !dashboardData.stats) return;
+
+        const stats = dashboardData.stats.summary;
+        const cardsData = [
+            {
+                title: 'งานทั้งหมด',
+                value: Utils.formatNumber(stats.totalTasks),
+                icon: 'fas fa-tasks',
+                color: 'blue',
+                bgClass: 'stat-card'
+            },
+            {
+                title: 'เสร็จสมบูรณ์',
+                value: Utils.formatNumber(stats.completedTasks),
+                icon: 'fas fa-check-circle',
+                color: 'green',
+                bgClass: 'stat-card'
+            },
+            {
+                title: 'ยังไม่เสร็จ',
+                value: Utils.formatNumber(stats.pendingTasks),
+                icon: 'fas fa-clock',
+                color: 'yellow',
+                bgClass: 'stat-card yellow'
+            },
+            {
+                title: 'งานปีนี้',
+                value: Utils.formatNumber(stats.currentYearTasks),
+                icon: 'fas fa-calendar-alt',
+                color: 'blue',
+                bgClass: 'stat-card white'
+            },
+            {
+                title: 'งานเดือนนี้',
+                value: Utils.formatNumber(stats.currentMonthTasks),
+                icon: 'fas fa-calendar-day',
+                color: 'blue',
+                bgClass: 'stat-card'
+            },
+            {
+                title: 'กำลังจะมาถึง',
+                value: Utils.formatNumber(stats.upcomingTasks),
+                icon: 'fas fa-exclamation-triangle',
+                color: 'orange',
+                bgClass: 'stat-card yellow'
+            }
+        ];
+
+        const cardsHTML = cardsData.map(card => `
+            <div class="${card.bgClass} fade-in">
+                <div class="stat-card-content">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm opacity-90 mb-1">${card.title}</p>
+                            <p class="text-2xl font-bold">${card.value}</p>
+                        </div>
+                        <div class="text-3xl opacity-80">
+                            <i class="${card.icon}"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        statsSection.innerHTML = cardsHTML;
+
+        // Add completion rate info
+        if (stats.totalTasks > 0) {
+            const completionRateHTML = `
+                <div class="lg:col-span-2 modern-card fade-in mt-4">
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-gray-700">อัตราความสำเร็จโดยรวม</span>
+                            <span class="text-sm font-bold text-blue-600">${stats.completionRate}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${stats.completionRate}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            statsSection.insertAdjacentHTML('afterend', completionRateHTML);
+        }
+    },
+
+    // ⭐ Render monthly chart (placeholder - จะต้องเพิ่มฟังก์ชันนี้)
+    renderMonthlyChart: function() {
+        console.log('renderMonthlyChart called with data:', dashboardData.monthly);
+        // TODO: Implement chart rendering
+    },
+
+    // ⭐ Render user chart (placeholder)
+    renderUserChart: function() {
+        console.log('renderUserChart called with data:', dashboardData.userStats);
+        // TODO: Implement chart rendering
+    },
+
+    // ⭐ Render top users
+    renderTopUsers: function() {
+        const container = document.getElementById('top-users');
+        if (!container || !dashboardData.userStats) return;
+
+        const topUsers = dashboardData.userStats.slice(0, 5);
+
+        const usersHTML = topUsers.map((user, index) => {
+            const rankIcons = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+            const rankIcon = rankIcons[index] || '📍';
+
+            return `
+                <div class="user-stat-item slide-in" style="animation-delay: ${index * 0.1}s">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-2xl">${rankIcon}</span>
+                            <div>
+                                <p class="font-semibold text-gray-800">${user.assignee}</p>
+                                <p class="text-sm text-gray-600">${user.email || 'ไม่มีอีเมล'}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-lg text-blue-600">${Utils.formatNumber(user.totalTasks)}</p>
+                            <p class="text-sm text-gray-500">งาน</p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span>อัตราความสำเร็จ</span>
+                            <span class="font-semibold">${user.completionRate}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${user.completionRate}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = usersHTML;
+    },
+
+    // ⭐ Render upcoming tasks
+    renderUpcomingTasks: function() {
+        const container = document.getElementById('upcoming-tasks');
+        if (!container || !dashboardData.upcomingTasks) return;
+
+        const tasks = Array.isArray(dashboardData.upcomingTasks) 
+            ? dashboardData.upcomingTasks 
+            : dashboardData.upcomingTasks.data || [];
+
+        if (tasks.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-calendar-check text-4xl mb-4 opacity-50"></i>
+                    <p>ไม่มีงานที่กำลังจะมาถึง</p>
+                </div>
+            `;
+            return;
+        }
+
+        const tasksHTML = tasks.slice(0, 10).map((task, index) => {
+            const daysUntil = parseInt(task.daysUntilDue);
+            let taskClass = 'normal';
+            let urgencyText = '';
+            let urgencyIcon = 'fas fa-calendar';
+
+            if (daysUntil === 0) {
+                taskClass = 'today';
+                urgencyText = 'วันนี้';
+                urgencyIcon = 'fas fa-exclamation-circle';
+            } else if (daysUntil <= 3) {
+                taskClass = 'urgent';
+                urgencyText = `อีก ${daysUntil} วัน`;
+                urgencyIcon = 'fas fa-clock';
+            } else {
+                urgencyText = `อีก ${daysUntil} วัน`;
+            }
+
+            return `
+                <div class="task-item ${taskClass} p-4 slide-in" style="animation-delay: ${index * 0.05}s">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-800 mb-1">${task.name}</h4>
+                            <p class="text-sm text-gray-600 mb-2">
+                                <i class="fas fa-user mr-1"></i>
+                                ${task.assignee}
+                            </p>
+                            <div class="flex items-center text-sm">
+                                <i class="${urgencyIcon} mr-1"></i>
+                                <span class="font-medium">${urgencyText}</span>
+                                <span class="mx-2">•</span>
+                                <span class="text-gray-500">${Utils.formatThaiDate(task.dueDate)}</span>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            ${task.link ? `
+                                <a href="${task.link}" target="_blank" 
+                                   class="text-blue-600 hover:text-blue-800 transition-colors">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = tasksHTML;
+    },
+
+    // ⭐ Populate filter options
+    populateFilterOptions: function() {
+        // Populate year filter
+        const yearFilter = document.getElementById('filter-year');
+        if (yearFilter) {
+            const currentYear = new Date().getFullYear() + 543;
+            const years = [];
+            for (let year = 2565; year <= currentYear + 2; year++) {
+                years.push(year);
+            }
+            
+            yearFilter.innerHTML = '<option value="">ทุกปี</option>' + 
+                years.map(year => `<option value="${year}">${year}</option>`).join('');
+        }
+
+        // Populate assignee filter
+        const assigneeFilter = document.getElementById('filter-assignee');
+        if (assigneeFilter && dashboardData.userStats) {
+            const assignees = dashboardData.userStats.map(user => user.assignee);
+            assigneeFilter.innerHTML = '<option value="">ทุกคน</option>' + 
+                assignees.map(assignee => `<option value="${assignee}">${assignee}</option>`).join('');
+        }
     }
 });
 
