@@ -1,9 +1,122 @@
-// Dashboard JavaScript - Modern Training Management System
-// โรงเรียนบ้านวังด้ง - ส่วนที่ 3: Forms, Modal และ Table Functions
+// Dashboard Forms - ปรับปรุงเพื่อรองรับการบันทึกรายงานการอบรม
+// เพิ่มส่วนนี้ใน Dashboard object
 
-// Extend Dashboard object with form and table functions
 Object.assign(Dashboard, {
-    // Load tasks table
+    // Open training modal (ปรับปรุงแล้ว)
+    openTrainingModal: function(taskId = null) {
+        const modal = document.getElementById('training-modal');
+        const form = document.getElementById('training-form');
+        
+        if (!modal || !form) return;
+
+        // Reset form
+        form.reset();
+        
+        // Set task ID if provided
+        if (taskId) {
+            const taskGidInput = document.getElementById('task-gid');
+            if (taskGidInput) taskGidInput.value = taskId;
+        }
+
+        // Set timestamp
+        const timestampInput = document.getElementById('timestamp');
+        if (timestampInput) {
+            timestampInput.value = new Date().toISOString();
+        }
+
+        // Show modal
+        modal.classList.add('active');
+        
+        // Focus on first input
+        const firstInput = form.querySelector('textarea, input[type="text"]');
+        if (firstInput) {
+            setTimeout(() => firstInput.focus(), 300);
+        }
+    },
+
+    // Close training modal
+    closeTrainingModal: function() {
+        const modal = document.getElementById('training-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    },
+
+    // ⭐ Handle training form submit (ปรับปรุงแล้ว)
+    handleTrainingFormSubmit: async function(event) {
+        event.preventDefault();
+        
+        const form = event.target;
+        const formData = new FormData(form);
+        
+        // Validate required fields
+        const requiredFields = [
+            { name: 'knowledgeGained', label: 'ความรู้/ผลที่ได้รับ' },
+            { name: 'implementationPlan', label: 'แนวทางปฏิบัติที่ต้องดำเนินการต่อ' },
+            { name: 'knowledgeSharing', label: 'การนำความรู้ไปเผยแพร่' },
+            { name: 'lineUid', label: 'LINE UID' }
+        ];
+        
+        const missingFields = [];
+        
+        requiredFields.forEach(field => {
+            const value = formData.get(field.name);
+            if (!value || value.trim() === '') {
+                missingFields.push(field.label);
+            }
+        });
+        
+        if (missingFields.length > 0) {
+            Utils.showError('กรุณากรอกข้อมูลในช่องต่อไปนี้:\n• ' + missingFields.join('\n• '));
+            return;
+        }
+
+        try {
+            Utils.showLoading('กำลังบันทึกรายงาน...');
+            
+            // Prepare data for submission
+            const reportData = {
+                taskGid: formData.get('taskGid') || this.generateTaskGID(),
+                knowledgeGained: formData.get('knowledgeGained').trim(),
+                implementationPlan: formData.get('implementationPlan').trim(),
+                knowledgeSharing: formData.get('knowledgeSharing').trim(),
+                suggestionsImages: formData.get('suggestionsImages') ? formData.get('suggestionsImages').trim() : '',
+                lineUid: formData.get('lineUid').trim(),
+                timestamp: formData.get('timestamp') || new Date().toISOString()
+            };
+            
+            console.log('Submitting training report:', reportData);
+            
+            // Save to Google Sheets
+            const result = await API.saveTrainingReport(reportData);
+            
+            Utils.showSuccess('บันทึกรายงานการอบรมเรียบร้อย');
+            this.closeTrainingModal();
+            
+            // Refresh data
+            await this.loadDashboardData();
+            
+        } catch (error) {
+            console.error('Failed to save training report:', error);
+            
+            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                Utils.showNetworkError();
+            } else {
+                Utils.showError('ไม่สามารถบันทึกรายงานได้: ' + error.message);
+            }
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    // ⭐ Generate Task GID (ใหม่)
+    generateTaskGID: function() {
+        const timestamp = new Date().getTime();
+        const random = Math.random().toString(36).substr(2, 5);
+        return `TRN-${timestamp}-${random}`.toUpperCase();
+    },
+
+    // Load tasks table (ปรับปรุงแล้ว)
     loadTasksTable: async function() {
         try {
             Utils.showLoading('กำลังโหลดรายการงาน...');
@@ -21,7 +134,12 @@ Object.assign(Dashboard, {
             
         } catch (error) {
             console.error('Failed to load tasks table:', error);
-            Utils.showError('ไม่สามารถโหลดรายการงานได้');
+            
+            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                Utils.showNetworkError();
+            } else {
+                Utils.showError('ไม่สามารถโหลดรายการงานได้');
+            }
         } finally {
             Utils.hideLoading();
         }
@@ -57,9 +175,21 @@ Object.assign(Dashboard, {
         const tbody = document.getElementById('tasks-tbody');
         const tasksCount = document.getElementById('tasks-count');
         const paginationInfo = document.getElementById('pagination-info');
-        const paginationControls = document.getElementById('pagination-controls');
         
-        if (!tbody || !dashboardData.tasks) return;
+        if (!tbody) return;
+
+        // Handle missing tasks data
+        if (!dashboardData.tasks) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center py-8 text-gray-500">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-4 opacity-50"></i>
+                        <p>ไม่สามารถโหลดข้อมูลได้</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
         // Apply search filter if exists
         let filteredTasks = dashboardData.tasks;
@@ -103,7 +233,7 @@ Object.assign(Dashboard, {
                     <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors fade-in" 
                         style="animation-delay: ${index * 0.05}s">
                         <td class="py-3 px-4">
-                            <div class="font-medium text-gray-900">${task.name}</div>
+                            <div class="font-medium text-gray-900">${task.name || 'ไม่มีชื่องาน'}</div>
                             ${task.link ? `
                                 <a href="${task.link}" target="_blank" 
                                    class="text-sm text-blue-600 hover:text-blue-800 transition-colors">
@@ -112,7 +242,7 @@ Object.assign(Dashboard, {
                             ` : ''}
                         </td>
                         <td class="py-3 px-4">
-                            <div class="text-gray-900">${task.assignee}</div>
+                            <div class="text-gray-900">${task.assignee || 'ไม่มีผู้รับผิดชอบ'}</div>
                             ${task.assigneeEmail ? `
                                 <div class="text-sm text-gray-500">${task.assigneeEmail}</div>
                             ` : ''}
@@ -161,6 +291,97 @@ Object.assign(Dashboard, {
 
         // Render pagination controls
         this.renderPaginationControls(totalPages, filteredTasks.length);
+    },
+
+    // Mark task as complete (ปรับปรุงแล้ว)
+    markTaskComplete: async function(taskId) {
+        Utils.showConfirm(
+            'ยืนยันการทำเครื่องหมาย',
+            'คุณต้องการทำเครื่องหมายงานนี้เป็นเสร็จสมบูรณ์หรือไม่?',
+            async () => {
+                try {
+                    Utils.showLoading('กำลังอัปเดตสถานะ...');
+                    
+                    await API.updateTaskStatus(taskId, 'Yes');
+                    
+                    Utils.showSuccess('อัปเดตสถานะเรียบร้อย');
+                    await this.loadTasksTable();
+                    await this.loadDashboardData();
+                    
+                } catch (error) {
+                    console.error('Failed to update task status:', error);
+                    
+                    if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                        Utils.showNetworkError();
+                    } else {
+                        Utils.showError('ไม่สามารถอัปเดตสถานะได้');
+                    }
+                } finally {
+                    Utils.hideLoading();
+                }
+            }
+        );
+    },
+
+    // Export data (ปรับปรุงแล้ว)
+    exportData: async function() {
+        try {
+            Utils.showLoading('กำลังเตรียมไฟล์ Excel...');
+            
+            const filters = this.getCurrentFilters();
+            const result = await API.exportToExcel(filters);
+            
+            if (result.downloadUrl) {
+                // Create download link
+                const link = document.createElement('a');
+                link.href = result.downloadUrl;
+                link.download = result.filename || 'training_data.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                Utils.showSuccess('ดาวน์โหลดไฟล์ Excel เรียบร้อย');
+            } else {
+                Utils.showSuccess('ฟีเจอร์ส่งออก Excel จะเปิดใช้งานในเร็วๆ นี้');
+            }
+            
+        } catch (error) {
+            console.error('Failed to export data:', error);
+            throw error; // Re-throw for handling in event listener
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    // Sync data from Asana (ปรับปรุงแล้ว)
+    syncData: async function() {
+        Utils.showConfirm(
+            'ยืนยันการซิงค์ข้อมูล',
+            'คุณต้องการซิงค์ข้อมูลจาก Asana หรือไม่? การดำเนินการนี้อาจใช้เวลาสักครู่',
+            async () => {
+                try {
+                    Utils.showLoading('กำลังซิงค์ข้อมูลจาก Asana...');
+                    
+                    const result = await API.syncFromAsana();
+                    
+                    Utils.showSuccess(`ซิงค์ข้อมูลเรียบร้อย: อัปเดต ${result.updated || 0} รายการ`);
+                    
+                    // Refresh all data
+                    await this.loadDashboardData();
+                    
+                } catch (error) {
+                    console.error('Failed to sync data:', error);
+                    throw error; // Re-throw for handling in event listener
+                } finally {
+                    Utils.hideLoading();
+                }
+            }
+        );
+    },
+
+    // View reports (placeholder)
+    viewReports: function() {
+        Utils.showSuccess('ฟีเจอร์รายงานจะเปิดใช้งานในเร็วๆ นี้');
     },
 
     // Render pagination controls
@@ -235,188 +456,8 @@ Object.assign(Dashboard, {
         if (page < 1 || page > Math.ceil(totalTasks / pageSize)) return;
         currentPage = page;
         this.renderTasksTable();
-    },
-
-    // Mark task as complete
-    markTaskComplete: async function(taskId) {
-        Utils.showConfirm(
-            'ยืนยันการทำเครื่องหมาย',
-            'คุณต้องการทำเครื่องหมายงานนี้เป็นเสร็จสมบูรณ์หรือไม่?',
-            async () => {
-                try {
-                    Utils.showLoading('กำลังอัปเดตสถานะ...');
-                    
-                    await API.updateTaskStatus(taskId, 'Yes');
-                    
-                    Utils.showSuccess('อัปเดตสถานะเรียบร้อย');
-                    await this.loadTasksTable();
-                    await this.loadDashboardData();
-                    
-                } catch (error) {
-                    console.error('Failed to update task status:', error);
-                    Utils.showError('ไม่สามารถอัปเดตสถานะได้');
-                } finally {
-                    Utils.hideLoading();
-                }
-            }
-        );
-    },
-
-    // Open training modal
-    openTrainingModal: function(taskId = null) {
-        const modal = document.getElementById('training-modal');
-        const form = document.getElementById('training-form');
-        
-        if (!modal || !form) return;
-
-        // Reset form
-        form.reset();
-        
-        // Set task ID if provided
-        if (taskId) {
-            const taskGidInput = document.getElementById('task-gid');
-            if (taskGidInput) taskGidInput.value = taskId;
-        }
-
-        // Set timestamp
-        const timestampInput = document.getElementById('timestamp');
-        if (timestampInput) {
-            timestampInput.value = new Date().toISOString();
-        }
-
-        // Show modal
-        modal.classList.add('active');
-        
-        // Focus on first input
-        const firstInput = form.querySelector('textarea, input[type="text"]');
-        if (firstInput) {
-            setTimeout(() => firstInput.focus(), 300);
-        }
-    },
-
-    // Close training modal
-    closeTrainingModal: function() {
-        const modal = document.getElementById('training-modal');
-        if (modal) {
-            modal.classList.remove('active');
-        }
-    },
-
-    // Handle training form submit
-    handleTrainingFormSubmit: async function(event) {
-        event.preventDefault();
-        
-        const form = event.target;
-        const formData = new FormData(form);
-        
-        // Validate required fields
-        const requiredFields = ['knowledgeGained', 'implementationPlan', 'knowledgeSharing', 'lineUid'];
-        const missingFields = [];
-        
-        requiredFields.forEach(field => {
-            if (!formData.get(field) || formData.get(field).trim() === '') {
-                missingFields.push(field);
-            }
-        });
-        
-        if (missingFields.length > 0) {
-            Utils.showError('กรุณากรอกข้อมูลให้ครบถ้วน');
-            return;
-        }
-
-        try {
-            Utils.showLoading('กำลังบันทึกรายงาน...');
-            
-            // Prepare data for submission
-            const reportData = {
-                taskGid: formData.get('taskGid') || Utils.generateId(),
-                knowledgeGained: formData.get('knowledgeGained'),
-                implementationPlan: formData.get('implementationPlan'),
-                knowledgeSharing: formData.get('knowledgeSharing'),
-                suggestionsImages: formData.get('suggestionsImages') || '',
-                lineUid: formData.get('lineUid'),
-                timestamp: formData.get('timestamp') || new Date().toISOString()
-            };
-            
-            // Save to Google Sheets
-            await API.saveTrainingReport(reportData);
-            
-            Utils.showSuccess('บันทึกรายงานการอบรมเรียบร้อย');
-            this.closeTrainingModal();
-            
-            // Refresh data
-            await this.loadDashboardData();
-            
-        } catch (error) {
-            console.error('Failed to save training report:', error);
-            Utils.showError('ไม่สามารถบันทึกรายงานได้: ' + error.message);
-        } finally {
-            Utils.hideLoading();
-        }
-    },
-
-    // Export data to Excel
-    exportData: async function() {
-        try {
-            Utils.showLoading('กำลังเตรียมไฟล์ Excel...');
-            
-            const filters = this.getCurrentFilters();
-            const result = await API.exportToExcel(filters);
-            
-            if (result.downloadUrl) {
-                // Create download link
-                const link = document.createElement('a');
-                link.href = result.downloadUrl;
-                link.download = result.filename || 'training_data.xlsx';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                Utils.showSuccess('ดาวน์โหลดไฟล์ Excel เรียบร้อย');
-            } else {
-                throw new Error('ไม่สามารถสร้างไฟล์ Excel ได้');
-            }
-            
-        } catch (error) {
-            console.error('Failed to export data:', error);
-            Utils.showError('ไม่สามารถส่งออกข้อมูลได้: ' + error.message);
-        } finally {
-            Utils.hideLoading();
-        }
-    },
-
-    // Sync data from Asana
-    syncData: async function() {
-        Utils.showConfirm(
-            'ยืนยันการซิงค์ข้อมูล',
-            'คุณต้องการซิงค์ข้อมูลจาก Asana หรือไม่? การดำเนินการนี้อาจใช้เวลาสักครู่',
-            async () => {
-                try {
-                    Utils.showLoading('กำลังซิงค์ข้อมูลจาก Asana...');
-                    
-                    const result = await API.syncFromAsana();
-                    
-                    Utils.showSuccess(`ซิงค์ข้อมูลเรียบร้อย: อัปเดต ${result.updated || 0} รายการ`);
-                    
-                    // Refresh all data
-                    await this.loadDashboardData();
-                    
-                } catch (error) {
-                    console.error('Failed to sync data:', error);
-                    Utils.showError('ไม่สามารถซิงค์ข้อมูลได้: ' + error.message);
-                } finally {
-                    Utils.hideLoading();
-                }
-            }
-        );
-    },
-
-    // View reports (placeholder)
-    viewReports: function() {
-        Utils.showSuccess('ฟีเจอร์รายงานจะเปิดใช้งานในเร็วๆ นี้');
     }
 });
 
 // Make functions globally accessible for onclick handlers
 window.Dashboard = Dashboard;
-

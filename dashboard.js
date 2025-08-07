@@ -1,5 +1,5 @@
 // Dashboard JavaScript - Modern Training Management System
-// โรงเรียนบ้านวังด้ง - ส่วนที่ 1: Configuration และ Core Functions
+// โรงเรียนบ้านวังด้ง - ส่วนที่ 1: Configuration และ Core Functions (ปรับปรุงแล้ว)
 
 // Configuration
 const CONFIG = {
@@ -15,7 +15,11 @@ const CONFIG = {
         warning: '#f59e0b',
         danger: '#ef4444',
         gray: '#6b7280'
-    }
+    },
+    // ⭐ เพิ่มการตั้งค่าสำหรับ API
+    API_TIMEOUT: 30000, // 30 seconds
+    RETRY_ATTEMPTS: 3,
+    RETRY_DELAY: 1000 // 1 second
 };
 
 // Global Variables
@@ -121,40 +125,138 @@ const Utils = {
     // Format number with commas
     formatNumber: function(num) {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    },
+
+    // ⭐ Retry function with exponential backoff
+    retry: async function(fn, attempts = CONFIG.RETRY_ATTEMPTS, delay = CONFIG.RETRY_DELAY) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (attempts <= 1) {
+                throw error;
+            }
+            
+            console.log(`Retrying in ${delay}ms... (${CONFIG.RETRY_ATTEMPTS - attempts + 1}/${CONFIG.RETRY_ATTEMPTS})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            return this.retry(fn, attempts - 1, delay * 2);
+        }
+    },
+
+    // ⭐ Network status checker
+    isOnline: function() {
+        return navigator.onLine;
+    },
+
+    // ⭐ Show network error
+    showNetworkError: function() {
+        this.showError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
     }
 };
 
-// API Functions
+// ⭐ Updated API Functions with better error handling
 const API = {
-    // Base API call function
+    // Base API call function with JSONP support and retry logic
     call: async function(action, data = {}) {
-        try {
-            const response = await fetch(CONFIG.GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    action: action,
-                    ...data
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            
-            if (result.error) {
-                throw new Error(result.error);
-            }
-
-            return result;
-        } catch (error) {
-            console.error('API call failed:', error);
-            throw error;
+        // Check network status
+        if (!Utils.isOnline()) {
+            throw new Error('ไม่มีการเชื่อมต่ออินเทอร์เน็ต');
         }
+
+        return await Utils.retry(async () => {
+            try {
+                // Try POST request first (preferred method)
+                const response = await Promise.race([
+                    fetch(CONFIG.GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            action: action,
+                            ...data
+                        })
+                    }),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Request timeout')), CONFIG.API_TIMEOUT)
+                    )
+                ]);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                return result.data;
+
+            } catch (fetchError) {
+                console.log('POST request failed, trying JSONP...', fetchError.message);
+                
+                // Fallback to JSONP if POST fails
+                return await this.callJSONP(action, data);
+            }
+        });
+    },
+
+    // JSONP implementation with timeout
+    callJSONP: function(action, data = {}) {
+        return new Promise((resolve, reject) => {
+            // Create unique callback name
+            const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            
+            // Create script element
+            const script = document.createElement('script');
+            
+            // Set timeout
+            const timeout = setTimeout(() => {
+                cleanup();
+                reject(new Error('Request timeout'));
+            }, CONFIG.API_TIMEOUT);
+            
+            // Cleanup function
+            const cleanup = () => {
+                clearTimeout(timeout);
+                if (script.parentNode) {
+                    document.head.removeChild(script);
+                }
+                delete window[callbackName];
+            };
+            
+            // Define callback function
+            window[callbackName] = function(response) {
+                cleanup();
+                
+                if (response.error) {
+                    reject(new Error(response.error));
+                } else {
+                    resolve(response.data);
+                }
+            };
+            
+            // Build query parameters
+            const params = new URLSearchParams({
+                callback: callbackName,
+                action: action,
+                data: JSON.stringify(data)
+            });
+            
+            // Set script source
+            script.src = CONFIG.GOOGLE_SCRIPT_URL + '?' + params.toString();
+            
+            // Handle script error
+            script.onerror = () => {
+                cleanup();
+                reject(new Error('Script loading failed'));
+            };
+            
+            // Add script to head
+            document.head.appendChild(script);
+        });
     },
 
     // Get dashboard statistics
@@ -213,6 +315,9 @@ const Dashboard = {
             // Initialize event listeners
             this.initEventListeners();
             
+            // Check network status
+            this.initNetworkMonitoring();
+            
             // Load initial data
             await this.loadDashboardData();
             
@@ -229,8 +334,25 @@ const Dashboard = {
         } catch (error) {
             console.error('Dashboard initialization failed:', error);
             Utils.hideLoading();
-            Utils.showError('ไม่สามารถเริ่มต้นระบบได้: ' + error.message);
+            
+            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                Utils.showNetworkError();
+            } else {
+                Utils.showError('ไม่สามารถเริ่มต้นระบบได้: ' + error.message);
+            }
         }
+    },
+
+    // ⭐ Network monitoring
+    initNetworkMonitoring: function() {
+        window.addEventListener('online', () => {
+            Utils.showSuccess('เชื่อมต่ออินเทอร์เน็ตแล้ว');
+            this.refreshData();
+        });
+
+        window.addEventListener('offline', () => {
+            Utils.showError('ขาดการเชื่อมต่ออินเทอร์เน็ต');
+        });
     },
 
     // Initialize event listeners
@@ -346,13 +468,39 @@ const Dashboard = {
             });
         }
 
-        // Action buttons
+        // Action buttons with improved error handling
         const exportBtn = document.getElementById('export-excel');
         const syncBtn = document.getElementById('sync-asana');
         const reportsBtn = document.getElementById('view-reports');
 
-        if (exportBtn) exportBtn.addEventListener('click', () => this.exportData());
-        if (syncBtn) syncBtn.addEventListener('click', () => this.syncData());
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                try {
+                    await this.exportData();
+                } catch (error) {
+                    if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                        Utils.showNetworkError();
+                    } else {
+                        Utils.showError('ไม่สามารถส่งออกข้อมูลได้: ' + error.message);
+                    }
+                }
+            });
+        }
+
+        if (syncBtn) {
+            syncBtn.addEventListener('click', async () => {
+                try {
+                    await this.syncData();
+                } catch (error) {
+                    if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                        Utils.showNetworkError();
+                    } else {
+                        Utils.showError('ไม่สามารถซิงค์ข้อมูลได้: ' + error.message);
+                    }
+                }
+            });
+        }
+
         if (reportsBtn) reportsBtn.addEventListener('click', () => this.viewReports());
 
         // Modal overlay click to close
@@ -387,28 +535,37 @@ const Dashboard = {
         }
     },
 
-    // Load dashboard data
+    // Load dashboard data with better error handling
     loadDashboardData: async function() {
         try {
             Utils.showLoading('กำลังโหลดข้อมูล Dashboard...');
 
-            // Load all data in parallel
-            const [statsData, monthlyData, userStatsData, upcomingTasksData] = await Promise.all([
+            // Load all data in parallel with individual error handling
+            const [statsData, monthlyData, userStatsData, upcomingTasksData] = await Promise.allSettled([
                 API.getDashboardStats(),
                 API.getMonthlyStats(),
                 API.getUserStats(),
                 API.getUpcomingTasks(7)
             ]);
 
-            // Store data
+            // Process results and handle individual failures
             dashboardData = {
-                stats: statsData,
-                monthly: monthlyData,
-                userStats: userStatsData,
-                upcomingTasks: upcomingTasksData
+                stats: statsData.status === 'fulfilled' ? statsData.value : null,
+                monthly: monthlyData.status === 'fulfilled' ? monthlyData.value : null,
+                userStats: userStatsData.status === 'fulfilled' ? userStatsData.value : [],
+                upcomingTasks: upcomingTasksData.status === 'fulfilled' ? upcomingTasksData.value : []
             };
 
-            // Render components
+            // Log any failures
+            const failures = [statsData, monthlyData, userStatsData, upcomingTasksData]
+                .filter(result => result.status === 'rejected')
+                .map(result => result.reason.message);
+
+            if (failures.length > 0) {
+                console.warn('Some data failed to load:', failures);
+            }
+
+            // Render components (handle missing data gracefully)
             this.renderStatsCards();
             this.renderMonthlyChart();
             this.renderUserChart();
@@ -419,7 +576,12 @@ const Dashboard = {
 
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
-            Utils.showError('ไม่สามารถโหลดข้อมูลได้: ' + error.message);
+            
+            if (error.message.includes('เชื่อมต่อ') || error.message.includes('timeout')) {
+                Utils.showNetworkError();
+            } else {
+                Utils.showError('ไม่สามารถโหลดข้อมูลได้: ' + error.message);
+            }
         } finally {
             Utils.hideLoading();
         }
@@ -430,4 +592,3 @@ const Dashboard = {
 document.addEventListener('DOMContentLoaded', function() {
     Dashboard.init();
 });
-
