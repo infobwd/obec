@@ -1,6 +1,3 @@
-// Dashboard Functions - Complete Implementation
-// เพิ่มฟังก์ชันที่เหลือใน Dashboard object
-
 Object.assign(Dashboard, {
     // Open training modal
     openTrainingModal: function(taskId = null) {
